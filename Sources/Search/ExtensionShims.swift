@@ -637,10 +637,14 @@ enum ExtensionShims {
       // Where a tab is, as Search can find it: its place in its window's row
       // and that window's frame. WebKit's window numbers mean nothing to
       // Search, and windows.getAll gives the frames they go with.
+      let getWindows;
       const frames = async () => {
-        const all = chrome.windows && typeof chrome.windows.getAll === "function"
-          ? await Promise.resolve(chrome.windows.getAll()).catch(() => []) : [];
-        return new Map((all || []).map((w) => [w.id, { left: w.left, top: w.top, width: w.width, height: w.height }]));
+        // Keep getAll before tab mending: the mended one below asks frames()
+        // for its populated tabs too. The whole row tells overlapping windows
+        // apart even when the tab being found is blank in both.
+        const all = getWindows ? await Promise.resolve(getWindows({ populate: true })).catch(() => []) : [];
+        return new Map((all || []).map((w) => [w.id, { left: w.left, top: w.top, width: w.width, height: w.height,
+          tabs: Array.isArray(w.tabs) ? w.tabs.map((t) => t.url || t.pendingUrl || "") : undefined }]));
       };
       // The tab's address too: two windows can have one frame (a window
       // made over another, profiles in one window), and the tab at that
@@ -2475,6 +2479,7 @@ enum ExtensionShims {
           chrome.tabs.query({ currentWindow: true }).then((t) => f && f(t));
         },
       });
+      getWindows = chrome.windows && typeof chrome.windows.getAll === "function" ? chrome.windows.getAll.bind(chrome.windows) : null;
       if (chrome.tabs) {
         // Moving, sleeping and bringing forward tabs, by where they are in
         // the row — the one thing both sides agree on.
@@ -4254,7 +4259,7 @@ enum ExtensionShims {
         if let w = spec?["w"] as? [String: Any], let left = number(w["left"]), let top = number(w["top"]),
            let width = number(w["width"]), let height = number(w["height"]) {
             return owner.tab(windowFrame: CGRect(x: left, y: top, width: width, height: height), index: index,
-                             address: spec?["u"] as? String, for: context)
+                             address: spec?["u"] as? String, windowTabs: w["tabs"] as? [String], for: context)
         }
         guard Browsers.all.count <= 1 else { return nil }
         let visible = owner.visibleTabs(for: context)

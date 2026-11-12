@@ -350,10 +350,9 @@ final class Extensions: NSObject, ObservableObject {
     /// WebKit's (the window in front first), not Browsers.all's. WebKit
     /// turns the window's frame over from the bottom of the first screen;
     /// it is turned back here, give or take two points.
-    /// Two windows with one frame (one made over another, or profiles in
-    /// one window) are told apart by the tab's address at that place, when
-    /// the extension gave it (#872); still two, it is neither.
-    func tab(windowFrame frame: CGRect, index: Int, address: String? = nil, for context: WKWebExtensionContext) -> Tab? {
+    /// Two windows with one frame are told apart by their rows, then the
+    /// tab's address at that place. Still two, it is neither.
+    func tab(windowFrame frame: CGRect, index: Int, address: String? = nil, windowTabs: [String]? = nil, for context: WKWebExtensionContext) -> Tab? {
         let height = NSScreen.screens.first?.frame.height ?? 0
         let match = Browsers.all.filter { browser in
             guard let window = browser.window?.frame else { return false }
@@ -362,6 +361,12 @@ final class Extensions: NSObject, ObservableObject {
         }
         let found = match.compactMap { browser -> Tab? in
             let tabs = visibleTabs(of: browser, for: context)
+            if let windowTabs {
+                guard tabs.count == windowTabs.count,
+                      zip(tabs, windowTabs).allSatisfy({ tab, url in
+                          url.isEmpty || (url == "about:blank" ? tab.isBlank : tab.address?.absoluteString == url)
+                      }) else { return nil }
+            }
             return tabs.indices.contains(index) ? tabs[index] : nil
         }
         if found.count == 1 { return found[0] }
